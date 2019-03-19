@@ -2,9 +2,8 @@
 /* IMPORT */
 
 import * as _ from 'lodash';
-import {Container} from 'overstated';
+import {Container, autosuspend} from 'overstated';
 import Tags, {TagSpecials} from '@renderer/utils/tags';
-import Utils from '@renderer/utils/utils';
 
 const {SEPARATOR} = Tags;
 const {DEFAULT, ALL, FAVORITES, NOTEBOOKS, TAGS, TEMPLATES, UNTAGGED, TRASH} = TagSpecials;
@@ -24,6 +23,16 @@ class Tag extends Container<TagState, MainCTX> {
   state = {
     tag: DEFAULT
   };
+
+  /* CONSTRUCTOR */
+
+  constructor () {
+
+    super ();
+
+    autosuspend ( this );
+
+  }
 
   /* API */
 
@@ -55,6 +64,12 @@ class Tag extends Container<TagState, MainCTX> {
   hasChildren = ( tag: string = this.state.tag ): boolean => {
 
     return !!Object.keys ( this.getTags ( tag ) ).length;
+
+  }
+
+  hasNotes = ( tag: string = this.state.tag ): boolean => {
+
+    return !!this.getNotes ( tag ).length;
 
   }
 
@@ -112,17 +127,19 @@ class Tag extends Container<TagState, MainCTX> {
 
   }
 
-  scrollTo = ( tag: string = this.state.tag ) => {
+  scrollTo = ( tag: string | TagObj = this.state.tag ) => {
 
     if ( !tag ) return;
 
-    Utils.scrollTo ( `.tag[data-tag="${tag}"]`, '.layout-content > .multiple > .tag, .layout-content > .multiple > .tag-group' );
+    if ( _.isString ( tag ) ) return this.scrollTo ( this.get ( tag ) );
+
+    $('#list-tags').trigger ( 'scroll-to-item', tag );
 
   }
 
   set = async ( tag: string ) => {
 
-    if ( !this.get ( tag ) ) tag = DEFAULT;
+    if ( !this.hasNotes ( tag ) ) tag = DEFAULT;
 
     await this.setState ({ tag });
 
@@ -135,6 +152,8 @@ class Tag extends Container<TagState, MainCTX> {
   }
 
   setFromNote = async ( note?: NoteObj ) => {
+
+    if ( !note ) return;
 
     const tag = this.state.tag,
           tags = this.ctx.note.getTags ( note );
@@ -150,8 +169,6 @@ class Tag extends Container<TagState, MainCTX> {
 
     /* SETTING NEXT */
 
-    if ( !note ) return this.set ( ALL );
-
     const tagsTemplates = this.ctx.note.getTags ( note, TEMPLATES );
 
     if ( tagsTemplates.length ) return this.set ( tagsTemplates[0] );
@@ -160,9 +177,9 @@ class Tag extends Container<TagState, MainCTX> {
 
     if ( tagsNotebooks.length ) return this.set ( tagsNotebooks[0] );
 
-    if ( this.ctx.note.isFavorited ( note ) ) return this.set ( FAVORITES );
+    if ( tags.length ) return this.set ( tags[0] );
 
-    if ( tags.length ) return this.set ( ALL );
+    if ( this.ctx.note.isFavorited ( note ) ) return this.set ( FAVORITES );
 
     return this.set ( UNTAGGED );
 
@@ -170,7 +187,7 @@ class Tag extends Container<TagState, MainCTX> {
 
   update = async () => {
 
-    if ( this.get ( this.state.tag ) ) return;
+    if ( this.hasNotes ( this.state.tag ) ) return;
 
     const tag = DEFAULT;
 
@@ -188,11 +205,9 @@ class Tag extends Container<TagState, MainCTX> {
 
     const index = $tags.index ( '.tag.active' ) + modifier,
           indexWrapped = wrap ? ( $tags.length + index ) % $tags.length : index,
-          tagNext = $tags.eq ( indexWrapped ).data ( 'tag' );
+          tagNext = $tags.eq ( indexWrapped ).attr ( 'data-tag' );
 
     if ( tagNext ) return this.ctx.tag.set ( tagNext );
-
-    return; //TSC
 
   }
 

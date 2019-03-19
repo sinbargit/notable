@@ -3,7 +3,17 @@
 
 declare const __static: string;
 declare const Svelto: any;
-declare const $: any;
+
+/* CASH */
+
+type cash = typeof import ( 'cash-dom' ).default;
+type Cash = ReturnType<cash>;
+
+declare const $: cash & {
+  [index: string]: any,
+  $document: Cash,
+  $window: Cash
+};
 
 /* BASE OBJECTS */
 
@@ -16,11 +26,14 @@ type AttachmentsObj = {
   [fileName: string]: AttachmentObj
 };
 
+type MonacoEditor = import ( 'monaco-editor/esm/vs/editor/editor.api.js' ).editor.ICodeEditor & {
+  getChangeDate: () => Date | undefined
+}
+
 type NoteMetadataObj = {
   attachments: string[],
-  created?: number,
-  dateCreated: Date,
-  dateModified: Date,
+  created: Date,
+  modified: Date,
   deleted: boolean,
   favorited: boolean,
   pinned: boolean,
@@ -41,11 +54,29 @@ type NotesObj = {
   [filePath: string]: NoteObj
 };
 
+type QuickPanelResultsRawItem = {
+  title: string,
+  description?: string
+};
+
+type QuickPanelResultsNoteItem = NoteObj;
+
+type QuickPanelResultsAttachmentItem = AttachmentObj;
+
+type QuickPanelResultsItem = QuickPanelResultsRawItem | QuickPanelResultsNoteItem | QuickPanelResultsAttachmentItem;
+
+type QuickPanelResults = {
+  empty: string,
+  items: QuickPanelResultsItem[]
+};
+
 type TagObj = {
   collapsed: boolean,
   name: string,
   notes: NoteObj[],
   path: string,
+  icon?: string,
+  iconCollapsed?: string,
   tags: {
     [name: string]: TagObj
   }
@@ -65,19 +96,23 @@ type AttachmentsState = {
 };
 
 type EditorState = {
-  editing: boolean
+  monaco?: MonacoEditor,
+  editing: boolean,
+  split: boolean
 };
 
-type EditorEditingState = undefined | {
+type EditorEditingState = {
   filePath: string,
-  scrollTop: number,
-  selections: any[]
+  model: import ( 'monaco-editor/esm/vs/editor/editor.api.js' ).editor.ITextModel | null,
+  view: import ( 'monaco-editor/esm/vs/editor/editor.api.js' ).editor.ICodeEditorViewState | null
 };
 
-type EditorPreviewingState = undefined | {
+type EditorPreviewingState = {
   filePath: string,
   scrollTop: number
 };
+
+type ExportState = {};
 
 type ImportState = {};
 
@@ -98,10 +133,19 @@ type NotesState = {
   notes: NotesObj
 };
 
+type QuickPanelState = {
+  open: boolean,
+  query: string,
+  itemIndex: number,
+  results: QuickPanelResults
+};
+
 type SearchState = {
   query: string,
   notes: NoteObj[]
 };
+
+type SkeletonState = {};
 
 type SortingState = {
   by: import ( '@renderer/utils/sorting' ).SortingBys,
@@ -123,7 +167,9 @@ type TutorialState = {};
 
 type WindowState = {
   focus: boolean,
-  fullscreen: boolean
+  fullscreen: boolean,
+  sidebar: boolean,
+  zen: boolean
 };
 
 /* MAIN */
@@ -132,12 +178,15 @@ type MainState = {
   attachment: AttachmentState,
   attachments: AttachmentsState,
   editor: EditorState,
+  export: ExportState,
   import: ImportState,
   loading: LoadingState,
   multiEditor: MultiEditorState,
   note: NoteState,
   notes: NotesState,
+  quickPanel: QuickPanelState,
   search: SearchState,
+  skeleton: SkeletonState,
   sorting: SortingState,
   tag: TagState,
   tags: TagsState,
@@ -155,15 +204,19 @@ type MainCTX = {
   unsuspendMiddlewares (),
   refresh (),
   listen (),
+  waitIdle (),
   attachment: import ( '@renderer/containers/main/attachment' ).default,
   attachments: import ( '@renderer/containers/main/attachments' ).default,
   editor: import ( '@renderer/containers/main/editor' ).default,
+  export: import ( '@renderer/containers/main/export' ).default,
   import: import ( '@renderer/containers/main/import' ).default,
   loading: import ( '@renderer/containers/main/loading' ).default,
   multiEditor: import ( '@renderer/containers/main/multi_editor' ).default,
   note: import ( '@renderer/containers/main/note' ).default,
   notes: import ( '@renderer/containers/main/notes' ).default,
+  quickPanel: import ( '@renderer/containers/main/quick_panel' ).default,
   search: import ( '@renderer/containers/main/search' ).default,
+  skeleton: import ( '@renderer/containers/main/skeleton' ).default,
   sorting: import ( '@renderer/containers/main/sorting' ).default,
   tag: import ( '@renderer/containers/main/tag' ).default,
   tags: import ( '@renderer/containers/main/tags' ).default,
@@ -179,6 +232,12 @@ type IMain = MainCTX & { ctx: MainCTX };
 type CWDState = {};
 
 type CWDCTX = {
+  get (),
+  set (),
+  select (),
+  selectDefault (),
+  openInApp (),
+  dialog (),
   tutorial: import ( '@renderer/containers/main/tutorial' ).default
 };
 
@@ -190,9 +249,11 @@ type StateFlags = {
   hasNote: boolean,
   isAttachmentsEditing: boolean,
   isEditorEditing: boolean,
+  isEditorSplitView: boolean,
   isMultiEditorEditing: boolean,
   isNoteDeleted: boolean,
   isNoteFavorited: boolean,
   isNotePinned: boolean,
-  isTagsEditing: boolean
+  isTagsEditing: boolean,
+  isNoteTemplate: boolean
 };

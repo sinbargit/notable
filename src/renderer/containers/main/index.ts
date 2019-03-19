@@ -3,22 +3,27 @@
 
 import * as _ from 'lodash';
 import {ipcRenderer as ipc} from 'electron';
-import {Container, compose} from 'overstated';
+import {Container, autosuspend, compose} from 'overstated';
 import Attachment from './attachment';
 import Attachments from './attachments';
 import Editor from './editor';
+import Export from './export';
 import Import from './import';
 import Loading from './loading';
 import MultiEditor from './multi_editor';
 import Note from './note';
 import Notes from './notes';
+import QuickPanel from './quick_panel';
 import Search from './search';
+import Skeleton from './skeleton';
 import Sorting from './sorting';
 import Tag from './tag';
 import Tags from './tags';
 import Trash from './trash';
 import Tutorial from './tutorial';
 import Window from './window';
+import File from '@renderer/utils/file';
+import {TagSpecials} from '@renderer/utils/tags';
 
 /* MAIN */
 
@@ -26,13 +31,29 @@ class Main extends Container<MainState, MainCTX> {
 
   /* VARIABLES */
 
+  autosuspend = {
+    methods: /^(?!_|middleware|(?:(?:get|is|has)(?![a-z0-9]))|waitIdle)/
+  };
+
   _prevFlags;
+
+  /* CONSTRUCTOR */
+
+  constructor () {
+
+    super ();
+
+    autosuspend ( this );
+
+  }
 
   /* MIDDLEWARES */
 
   middlewares () {
 
     this.addMiddleware ( this.middlewareClosePopoversOthers );
+    this.addMiddleware ( this.middlewareClosePopoversQuickPanel );
+    this.addMiddleware ( this.middlewareCloseQuickPanelPopovers );
     this.addMiddleware ( this.middlewareNoNote );
     this.addMiddleware ( this.middlewareResetEditor );
     this.addMiddleware ( this.middlewareSaveEditor );
@@ -58,10 +79,28 @@ class Main extends Container<MainState, MainCTX> {
 
   }
 
+  middlewareClosePopoversQuickPanel ( prev: MainState ) {
+
+    if ( !( ( prev.attachments.editing || prev.tags.editing ) && !prev.quickPanel.open && this.state.quickPanel.open ) ) return;
+
+    if ( this.ctx.attachments.isEditing () ) this.ctx.attachments.toggleEditing ( false );
+    if ( this.ctx.tags.isEditing () ) this.ctx.tags.toggleEditing ( false );
+
+  }
+
+  middlewareCloseQuickPanelPopovers ( prev: MainState ) {
+
+    if ( !( ( ( !prev.attachments.editing && this.state.attachments.editing ) || ( !prev.tags.editing && this.state.tags.editing ) ) && this.state.quickPanel.open ) ) return;
+
+    this.ctx.quickPanel.toggleOpen ( false );
+
+  }
+
   middlewareNoNote ( prev: MainState ) {
 
     if ( !( prev.note.note && !this.state.note.note ) ) return;
 
+    if ( this.ctx.editor.isSplit () ) this.ctx.editor.toggleSplit ( false );
     if ( this.ctx.editor.isEditing () ) this.ctx.editor.toggleEditing ( false );
     if ( this.ctx.tags.isEditing () ) this.ctx.tags.toggleEditing ( false );
     if ( this.ctx.attachments.isEditing () ) this.ctx.attachments.toggleEditing ( false );
@@ -70,23 +109,23 @@ class Main extends Container<MainState, MainCTX> {
 
   middlewareResetEditor ( prev: MainState ) {
 
-    if ( !( !prev.editor.editing && !this.state.editor.editing && prev.note.note !== this.state.note.note ) ) return;
+    if ( !( ( ( !prev.editor.editing && !this.state.editor.editing ) || this.state.editor.split ) && !this.ctx.note.is ( prev.note.note, this.state.note.note, true ) ) ) return;
 
-    return this.ctx.editor.previewingState.reset ();
+    this.ctx.editor.previewingState.reset ();
 
   }
 
-  middlewareSaveEditor ( prev: MainState ) {
+  async middlewareSaveEditor ( prev: MainState ) {
 
-    if ( !( prev.note.note && ( ( prev.editor.editing && !this.state.editor.editing ) || ( this.state.editor.editing && !this.ctx.note.is ( prev.note.note, this.state.note.note ) ) || ( prev.editor.editing && prev.multiEditor.notes.length <= 1 && this.state.multiEditor.notes.length >= 1 ) ) ) ) return;
+    const note = this.ctx.note.get ();
 
-    const cm = this.ctx.editor.getCodeMirror ();
+    if ( !( prev.note.note && ( ( prev.editor.editing && !this.state.editor.editing ) || ( prev.editor.editing && prev.editor.split !== this.state.editor.split ) || ( this.state.editor.editing && !this.ctx.note.is ( prev.note.note, note ) ) || ( prev.editor.editing && prev.multiEditor.notes.length <= 1 && this.state.multiEditor.notes.length > 1 ) ) ) ) return;
 
-    if ( !cm ) return;
+    const data = this.ctx.editor.getData ();
 
-    const plainContent = cm.getValue ();
+    if ( !data ) return;
 
-    return this.ctx.note.save ( prev.note.note, plainContent );
+    await this.ctx.note.save ( prev.note.note, data.content, data.modified );
 
   }
 
@@ -94,13 +133,15 @@ class Main extends Container<MainState, MainCTX> {
 
     const flags: StateFlags = {
       hasNote: !!app.note.get (),
-      isEditorEditing: app.editor.isEditing (),
-      isMultiEditorEditing: app.multiEditor.isEditing (),
-      isTagsEditing: app.tags.isEditing (),
       isAttachmentsEditing: app.attachments.isEditing (),
+      isEditorEditing: app.editor.isEditing (),
+      isEditorSplitView: app.editor.isSplit (),
+      isMultiEditorEditing: app.multiEditor.isEditing (),
+      isNoteDeleted: app.note.isDeleted (),
       isNoteFavorited: app.note.isFavorited (),
       isNotePinned: app.note.isPinned (),
-      isNoteDeleted: app.note.isDeleted ()
+      isNoteTemplate: !!app.note.getTags ( undefined, TagSpecials.TEMPLATES ).length,
+      isTagsEditing: app.tags.isEditing ()
     };
 
     if ( _.isEqual ( app._prevFlags, flags ) ) return; // Nothing changed, no need to update the main process
@@ -139,6 +180,24 @@ class Main extends Container<MainState, MainCTX> {
 
   }
 
+  waitIdle = (): Promise<void> => { // Waiting until there are no pending API calls or IO operations
+
+    return new Promise ( res => {
+
+      const check = () => {
+
+        if ( !this['_updateSuspended'] && File.storage.isIdle () ) return res ();
+
+        requestAnimationFrame ( check );
+
+      };
+
+      check ();
+
+    });
+
+  }
+
 }
 
 /* EXPORT */
@@ -147,12 +206,15 @@ export default compose ({
   attachment: Attachment,
   attachments: Attachments,
   editor: Editor,
+  export: Export,
   import: Import,
   loading: Loading,
   multiEditor: MultiEditor,
   note: Note,
   notes: Notes,
+  quickPanel: QuickPanel,
   search: Search,
+  skeleton: Skeleton,
   sorting: Sorting,
   tag: Tag,
   tags: Tags,

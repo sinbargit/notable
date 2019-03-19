@@ -3,9 +3,10 @@
 
 import * as _ from 'lodash';
 import * as path from 'path';
-import {app, BrowserWindow} from 'electron';
+import {BrowserWindow} from 'electron';
 import * as is from 'electron-is';
 import * as windowStateKeeper from 'electron-window-state';
+import pkg from '@root/package.json';
 import Environment from '@common/environment';
 
 /* WINDOW */
@@ -18,6 +19,7 @@ class Window {
   win: BrowserWindow;
   options: object;
   stateOptions: object;
+  _didFocus: boolean = false;
 
   /* CONSTRUCTOR */
 
@@ -26,9 +28,6 @@ class Window {
     this.name = name;
     this.options = options;
     this.stateOptions = stateOptions;
-
-    this.init ();
-    this.events ();
 
   }
 
@@ -40,7 +39,9 @@ class Window {
     this.initDebug ();
     this.initLocalShortcuts ();
     this.initMenu ();
+
     this.load ();
+    this.events ();
 
   }
 
@@ -72,20 +73,29 @@ class Window {
 
   events () {
 
-    this.___readyToShow ();
+    this.___didFinishLoad ();
     this.___closed ();
+    this.___focused ();
+
+  }
+
+  cleanup () {
+
+    this.win.removeAllListeners ();
 
   }
 
   /* READY TO SHOW */
 
-  ___readyToShow () {
+  ___didFinishLoad = () => {
 
-    this.win.on ( 'ready-to-show', this.__readyToShow.bind ( this ) );
+    this.win.webContents.on ( 'did-finish-load', this.__didFinishLoad );
 
   }
 
-  __readyToShow () {
+  __didFinishLoad = () => {
+
+    if ( this._didFocus ) return;
 
     this.win.show ();
     this.win.focus ();
@@ -94,15 +104,33 @@ class Window {
 
   /* CLOSED */
 
-  ___closed () {
+  ___closed = () => {
 
-    this.win.on ( 'closed', this.__closed.bind ( this ) );
+    this.win.on ( 'closed', this.__closed );
 
   }
 
-  __closed () {
+  __closed = () => {
+
+    this.cleanup ();
 
     delete this.win;
+
+  }
+
+  /* FOCUSED */
+
+  ___focused = () => {
+
+    this.win.on ( 'focus', this.__focused );
+
+  }
+
+  __focused = () => {
+
+    this._didFocus = true;
+
+    this.initMenu ();
 
   }
 
@@ -121,12 +149,13 @@ class Window {
 
     options = _.merge ( dimensions, {
       frame: !is.macOS (),
-      backgroundColor: '#fdfdfd',
+      backgroundColor: '#F4F4F4',
       icon: path.join ( __static, 'images', `icon.${is.windows () ? 'ico' : 'png'}` ),
       show: false,
-      title: app.getName (),
+      title: pkg.productName,
       titleBarStyle: 'hiddenInset',
       webPreferences: {
+        nodeIntegration: true,
         webSecurity: false
       }
     }, options );

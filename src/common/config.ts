@@ -7,6 +7,7 @@ import Settings from './settings';
 /* CONFIG */
 
 const Config = {
+  autoupdate: true,
   get cwd () {
     return Settings.get ( 'cwd' );
   },
@@ -15,8 +16,8 @@ const Config = {
       const cwd = Config.cwd;
       return cwd ? path.join ( cwd, 'attachments' ) : undefined;
     },
-    globs: ['**/*', '!**/.*'],
-    re: /attachments(?:\\|\/)(?!\.).*$/, // Excluding dot files
+    glob: '**/*',
+    re: /^(?!.*(?:\._.*|\.cache|\.DS_Store|Thumbs\.db)$)/,
     token: '@attachment' // Usable in urls
   },
   notes: {
@@ -24,8 +25,9 @@ const Config = {
       const cwd = Config.cwd;
       return cwd ? path.join ( cwd, 'notes' ) : undefined;
     },
-    globs: ['**/*.{md,mkd,mdwn,mdown,markdown,markdn,mdtxt,mdtext,txt}'],
+    glob: '**/*.{md,mkd,mdwn,mdown,markdown,markdn,mdtxt,mdtext,txt}',
     re: /\.(?:md|mkd|mdwn|mdown|markdown|markdn|mdtxt|mdtext|txt)$/,
+    ext: '.md',
     token: '@note' // Usable in urls
   },
   tags: {
@@ -38,23 +40,17 @@ const Config = {
     by: Settings.get ( 'sorting.by' ),
     type: Settings.get ( 'sorting.type' )
   },
-  flags: {
-    TUTORIAL: true, // Write the tutorial notes upon first instantiation
-    OPTIMISTIC_RENDERING: true // Assume writes are successful in order to render changes faster
-  },
   katex: {
     throwOnError: true,
     displayMode: false,
-    errorColor: '#f44336',
-    delimilters: [
-      { left: '¨D¨D', right: '¨D¨D', display: true }, // showdown converts `$$` to `¨D¨D`
-      { left: '\\(', right: '\\)', display: false },
-      { left: '\\[', right: '\\]', display: true },
-      { left: '~', right: '~', display: false, asciimath: true },
-      { left: '&&', right: '&&', display: true, asciimath: true }
-    ]
+    errorColor: '#F44336'
   },
-  mermaid: {}
+  mermaid: { //URL: https://github.com/knsv/mermaid/blob/7d3578b31aeea3bc9bbc618dcda57d82574eaffb/src/mermaidAPI.js#L51
+    gantt: {
+      barHeight: 25,
+      fontSize: 14
+    }
+  }
 };
 
 /* EXPORT */

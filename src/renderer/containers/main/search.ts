@@ -2,8 +2,8 @@
 /* IMPORT */
 
 import * as _ from 'lodash';
-import * as isShallowEqual from 'shallowequal';
-import {Container} from 'overstated';
+import * as isShallowEqual from 'is-shallow-equal';
+import {Container, autosuspend} from 'overstated';
 import Config from '@common/config';
 
 /* SEARCH */
@@ -12,8 +12,7 @@ class Search extends Container<SearchState, MainCTX> {
 
   /* VARIABLES */
 
-  _prevQuery = '';
-  _prevState;
+  _prev = {}; // id => { query, state }, so that multiple subsearches are isolated from each other (middlebar, quick open...)
 
   /* STATE */
 
@@ -22,36 +21,61 @@ class Search extends Container<SearchState, MainCTX> {
     notes: [] as NoteObj[]
   };
 
+  /* CONSTRUCTOR */
+
+  constructor () {
+
+    super ();
+
+    autosuspend ( this );
+
+  }
+
   /* HELPERS */
 
-  _isNoteMatch = ( note: NoteObj, query: string, tokensRe: RegExp[] ): boolean => {
+  _isAttachmentMatch = ( attachment: AttachmentObj, query: string ): boolean => {
+
+    return Svelto.Fuzzy.match ( attachment.fileName, query, false ) ;
+
+  }
+
+  _filterAttachmentsByQuery = ( attachments: AttachmentObj[], query: string ): AttachmentObj[] => {
+
+    return attachments.filter ( attachment => this._isAttachmentMatch ( attachment, query ) );
+
+  }
+
+  _isNoteMatch = ( note: NoteObj, filterContent: boolean, query: string, tokensRe: RegExp[] ): boolean => {
 
     const content = this.ctx.note.getContent ( note );
 
     return (
-      tokensRe.every ( tokenRe => tokenRe.test ( content ) ) ||
+      ( filterContent && tokensRe.every ( tokenRe => tokenRe.test ( content ) ) ) ||
       Svelto.Fuzzy.match ( this.ctx.note.getTitle ( note ), query, false )
     );
 
   }
 
-  _filterNotesByQuery = ( notes: NoteObj[], query: string ): NoteObj[] => {
+  _filterNotesByQuery = ( notes: NoteObj[], filterContent: boolean, query: string ): NoteObj[] => {
 
     const tokensRe = _.escapeRegExp ( query ).split ( Config.search.tokenizer ).map ( token => new RegExp ( token, 'i' ) );
 
-    return notes.filter ( note => this._isNoteMatch ( note, query, tokensRe ) );
+    return notes.filter ( note => this._isNoteMatch ( note, filterContent, query, tokensRe ) );
 
   }
 
-  _searchBy = ( tag: string, query: string ): NoteObj[] => {
+  _searchBy = ( tag: string, filterContent: boolean, query: string, _prevId: string = 'search' ): NoteObj[] => {
 
     /* OPTIMIZED SEARCH */ // Filtering/Ordering only the previously filtered notes
 
-    const prevQuery = this._prevQuery,
-          prevState = this._prevState;
+    if ( !this._prev[_prevId] ) this._prev[_prevId] = {};
 
-    this._prevQuery = query;
-    const state = this._prevState = _.pick ( this.ctx.state, ['notes', 'sorting', 'tags', 'tag'] );
+    const prev = this._prev[_prevId],
+          prevQuery = prev.query,
+          prevState = prev.state;
+
+    prev.query = query;
+    const state = prev.state = _.pick ( this.ctx.state, ['notes', 'sorting', 'tags', 'tag'] );
 
     if ( prevState ) {
 
@@ -61,7 +85,7 @@ class Search extends Container<SearchState, MainCTX> {
 
       } else if ( query.startsWith ( prevQuery ) && isShallowEqual ( prevState, state ) ) { // Sub-search
 
-        return this._filterNotesByQuery ( this.state.notes, query );
+        return this._filterNotesByQuery ( this.state.notes, filterContent, query );
 
       }
 
@@ -70,7 +94,7 @@ class Search extends Container<SearchState, MainCTX> {
     /* UNOPTIMIZED SEARCH */
 
     const notesByTag = this.ctx.tag.getNotes ( tag ),
-          notesByQuery = !query ? notesByTag : this._filterNotesByQuery ( notesByTag, query ),
+          notesByQuery = !query ? notesByTag : this._filterNotesByQuery ( notesByTag, filterContent, query ),
           notesSorted = this.ctx.sorting.sort ( notesByQuery ),
           notesUnique = _.uniq ( notesSorted ) as NoteObj[]; // If a note is in 2 sub-tags and we select a parent tag of both we will get duplicates
 
@@ -104,6 +128,12 @@ class Search extends Container<SearchState, MainCTX> {
 
   }
 
+  hasFocus = (): boolean => {
+
+    return document.activeElement === $('#middlebar input[type="search"]')[0];
+
+  }
+
   clear = () => {
 
     return this.setQuery ( '' );
@@ -134,7 +164,7 @@ class Search extends Container<SearchState, MainCTX> {
 
     if ( !tag ) return;
 
-    const notes = this._searchBy ( tag.path, this.state.query );
+    const notes = this._searchBy ( tag.path, true, this.state.query );
 
     if ( isShallowEqual ( this.state.notes, notes ) ) return; // Skipping unnecessary work
 
@@ -151,12 +181,10 @@ class Search extends Container<SearchState, MainCTX> {
     const {notes} = this.state,
           note = this.ctx.note.get (),
           index = ( note ? notes.indexOf ( note ) : -1 ) + modifier,
-          indexWrapped = wrap ? ( notes.length + index ) % notes.length : index,
-          noteNext = notes[indexWrapped];
+          indexNext = wrap ? ( notes.length + index ) % notes.length : index,
+          noteNext = notes[indexNext];
 
     if ( noteNext ) return this.ctx.note.set ( noteNext, true );
-
-    return; //TSC
 
   }
 

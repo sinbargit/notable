@@ -2,12 +2,13 @@
 /* IMPORT */
 
 import * as _ from 'lodash';
-import * as contextMenu from 'electron-context-menu';
+import contextMenu from 'electron-context-menu';
 import Dialog from 'electron-dialog';
 import * as is from 'electron-is';
 import {connect} from 'overstated';
 import {Component} from 'react-component-renderless';
 import Main from '@renderer/containers/main';
+import {TagSpecials} from '@renderer/utils/tags';
 
 /* CONTEXT MENU */
 
@@ -30,9 +31,9 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
 
   }
 
-  /* UTILITIES */
+  /* HELPERS */
 
-  _getItem ( x, y, selector ) {
+  _getItem = ( x, y, selector ) => {
 
     const eles = document.elementsFromPoint ( x, y );
 
@@ -40,7 +41,7 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
 
   }
 
-  _makeMenu ( selector: string | Function = '*', items: any[] = [], itemsUpdater = _.noop ) {
+  _makeMenu = ( selector: string | Function = '*', items: any[] = [], itemsUpdater = _.noop ) => {
 
     contextMenu ({
       prepend: () => items,
@@ -63,7 +64,7 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
 
   /* INIT */
 
-  initAttachmentMenu () {
+  initAttachmentMenu = () => {
 
     this._makeMenu ( '.attachment', [
       {
@@ -85,20 +86,13 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
         label: 'Delete',
         click: () => this.props.container.note.removeAttachment ( undefined, this.attachment )
       }
-    ], this.updateAttachmentMenu.bind ( this ) );
+    ], this.updateAttachmentMenu );
 
   }
 
-  initNoteMenu () {
+  initNoteMenu = () => {
 
-    this._makeMenu ( '.note-button, .editor .note', [
-      {
-        label: 'Duplicate',
-        click: () => this.props.container.note.duplicate ( this.note )
-      },
-      {
-        type: 'separator'
-      },
+    this._makeMenu ( '.note', [
       {
         label: 'Open in Default App',
         click: () => this.props.container.note.openInApp ( this.note )
@@ -106,6 +100,17 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
       {
         label: `Reveal in ${is.macOS () ? 'Finder' : 'Folder'}`,
         click: () => this.props.container.note.reveal ( this.note )
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'New from Template',
+        click: () => this.props.container.note.duplicate ( this.note, true )
+      },
+      {
+        label: 'Duplicate',
+        click: () => this.props.container.note.duplicate ( this.note )
       },
       {
         type: 'separator'
@@ -133,24 +138,24 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
         label: 'Permanently Delete',
         click: () => this.props.container.note.delete ( this.note )
       }
-    ], this.updateNoteMenu.bind ( this ) );
+    ], this.updateNoteMenu );
 
   }
 
-  initNoteTagMenu () {
+  initNoteTagMenu = () => {
 
     this._makeMenu ( '.tag:not([data-has-children]):not(a)', [
       {
         label: 'Remove',
-        click: () => this.props.container.note.removeTag ( undefined, $(this.ele).text () )
+        click: () => this.props.container.note.removeTag ( undefined, $(this.ele).attr ( 'data-tag' ) )
       }
     ]);
 
   }
 
-  initTagMenu () {
+  initTagMenu = () => {
 
-    this._makeMenu ( '.tag[data-has-children="true"]', [
+    this._makeMenu ( '.tag[data-has-children="true"], .tag[data-collapsed="true"]', [
       {
         label: 'Collapse',
         click: () => this.props.container.tag.toggleCollapse ( this.tag, true )
@@ -159,30 +164,30 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
         label: 'Expand',
         click: () => this.props.container.tag.toggleCollapse ( this.tag, false )
       }
-    ], this.updateTagMenu.bind ( this ) );
+    ], this.updateTagMenu );
 
   }
 
-  initTrashMenu () {
+  initTrashMenu = () => {
 
     this._makeMenu ( '.tag[title="Trash"]', [
       {
         label: 'Empty Trash',
         click: this.props.container.trash.empty
       }
-    ], this.updateTrashMenu.bind ( this ) );
+    ], this.updateTrashMenu );
 
   }
 
-  initFallbackMenu () {
+  initFallbackMenu = () => {
 
-    this._makeMenu ( ( x, y ) => !this._getItem ( x, y, '.attachment, .note-button, .editor .note, .tag:not([data-has-children]), .tag[data-has-children="true"], .tag[title="Trash"]' ) );
+    this._makeMenu ( ( x, y ) => !this._getItem ( x, y, '.attachment, .note, .tag:not([data-has-children]), .tag[data-has-children="true"], .tag[data-collapsed="true"], .tag[title="Trash"]' ) );
 
   }
 
   /* UPDATE */
 
-  updateAttachmentMenu ( items ) {
+  updateAttachmentMenu = ( items ) => {
 
     const fileName = $(this.ele).data ( 'filename' );
 
@@ -190,25 +195,27 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
 
   }
 
-  updateNoteMenu ( items ) {
+  updateNoteMenu = ( items ) => {
 
     const filePath = $(this.ele).data ( 'filepath' );
 
     this.note = this.props.container.note.get ( filePath );
 
     const isFavorited = this.props.container.note.isFavorited ( this.note ),
-          isDeleted = this.props.container.note.isDeleted ( this.note )
+          isDeleted = this.props.container.note.isDeleted ( this.note ),
+          isTemplate = !!this.props.container.note.getTags ( this.note, TagSpecials.TEMPLATES ).length;
 
-    items[5].visible = !isFavorited;
-    items[6].visible = !!isFavorited;
-    items[8].visible = !isDeleted;
-    items[9].visible = !!isDeleted;
+    items[3].visible = !!isTemplate;
+    items[6].visible = !isFavorited;
+    items[7].visible = !!isFavorited;
+    items[9].visible = !isDeleted;
+    items[10].visible = !!isDeleted;
 
   }
 
-  updateTagMenu ( items ) {
+  updateTagMenu = ( items ) => {
 
-    this.tag = $(this.ele).data ( 'tag' );
+    this.tag = $(this.ele).attr ( 'data-tag' );
 
     const isCollapsed = this.props.container.tag.isCollapsed ( this.tag );
 
@@ -217,7 +224,7 @@ class ContextMenu extends Component<{ container: IMain }, undefined> {
 
   }
 
-  updateTrashMenu ( items ) {
+  updateTrashMenu = ( items ) => {
 
     items[0].enabled = !this.props.container.trash.isEmpty ();
 

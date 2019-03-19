@@ -1,13 +1,15 @@
 
 /* IMPORT */
 
-import {app, ipcMain as ipc} from 'electron';
-import {autoUpdater} from 'electron-updater';
+import {app, ipcMain as ipc, Event, Menu, MenuItemConstructorOptions} from 'electron';
+import {autoUpdater as updater} from 'electron-updater';
 import * as is from 'electron-is';
 import * as fs from 'fs';
 import pkg from '@root/package.json';
 import Config from '@common/config';
 import Environment from '@common/environment';
+import Notification from '@main/utils/notification';
+import UMenu from '@main/utils/menu';
 import CWD from './windows/cwd';
 import Main from './windows/main';
 import Window from './windows/window';
@@ -33,27 +35,34 @@ class App {
 
   init () {
 
-    this.initAbout ();
     this.initContextMenu ();
-
-  }
-
-  initAbout () {
-
-    if ( !is.macOS () ) return;
-
-    const {productName, version, license, author} = pkg;
-
-    app.setAboutPanelOptions ({
-      applicationName: productName,
-      applicationVersion: version,
-      copyright: `${license} © ${author.name}`,
-      version: ''
-    });
+    this.initMenu ();
 
   }
 
   initContextMenu () {}
+
+  initMenu () {
+
+    const template: MenuItemConstructorOptions[] = UMenu.filterTemplate ([
+      {
+        label: pkg.productName,
+        submenu: [
+          {
+            label: 'Open',
+            accelerator: 'CmdOrCtrl+O',
+            click: this.load.bind ( this )
+          },
+          { role: 'quit' }
+        ]
+      }
+    ]);
+
+    const menu = Menu.buildFromTemplate ( template );
+
+    Menu.setApplicationMenu ( menu );
+
+  }
 
   async initDebug () {
 
@@ -69,36 +78,39 @@ class App {
 
     this.___windowAllClosed ();
     this.___activate ();
+    this.___beforeQuit ();
+    this.___forceQuit ();
     this.___ready ();
     this.___cwdChanged ();
+    this.___updaterCheck ();
 
   }
 
   /* WINDOW ALL CLOSED */
 
-  ___windowAllClosed () {
+  ___windowAllClosed = () => {
 
-    app.on ( 'window-all-closed', this.__windowAllClosed.bind ( this ) );
+    app.on ( 'window-all-closed', this.__windowAllClosed );
 
   }
 
-  __windowAllClosed () {
+  __windowAllClosed = () => {
 
-    if ( is.macOS () ) return;
+    if ( is.macOS () ) return this.initMenu ();
 
-    app.quit ();
+    this.quit ();
 
   }
 
   /* ACTIVATE */
 
-  ___activate () {
+  ___activate = () => {
 
-    app.on ( 'activate', this.__activate.bind ( this ) );
+    app.on ( 'activate', this.__activate );
 
   }
 
-  __activate () {
+  __activate = () => {
 
     if ( this.win && this.win.win ) return;
 
@@ -106,19 +118,55 @@ class App {
 
   }
 
-  /* READY */
+  /* BEFORE QUIT */
 
-  ___ready () {
+  ___beforeQuit = () => {
 
-    app.on ( 'ready', this.__ready.bind ( this ) );
+    app.on ( 'before-quit', this.__beforeQuit );
 
   }
 
-  __ready () {
+  ___beforeQuit_off = () => {
+
+    app.removeListener ( 'before-quit', this.__beforeQuit );
+
+  }
+
+  __beforeQuit = ( event ) => {
+
+    if ( !this.win || !this.win.win ) return;
+
+    event.preventDefault ();
+
+    this.win.win.webContents.send ( 'app-quit' );
+
+  }
+
+  /* FORCE QUIT */
+
+  ___forceQuit = () => {
+
+    ipc.on ( 'force-quit', this.__forceQuit );
+
+  }
+
+  __forceQuit = () => {
+
+    this.quit ();
+
+  }
+
+  /* READY */
+
+  ___ready = () => {
+
+    app.on ( 'ready', this.__ready );
+
+  }
+
+  __ready = () => {
 
     this.initDebug ();
-
-    autoUpdater.checkForUpdatesAndNotify ();
 
     this.load ();
 
@@ -126,17 +174,49 @@ class App {
 
   /* CWD CHANGED */
 
-  ___cwdChanged () {
+  ___cwdChanged = () => {
 
-    ipc.on ( 'cwd-changed', this.__cwdChanged.bind ( this ) );
+    ipc.on ( 'cwd-changed', this.__cwdChanged );
 
   }
 
-  __cwdChanged () {
+  __cwdChanged = () => {
 
-    if ( this.win ) this.win.win.close ();
+    if ( this.win && this.win.win ) {
 
-    this.load ();
+      this.win.win.once ( 'closed', this.load.bind ( this ) );
+
+      this.win.win.close ();
+
+    } else {
+
+      this.load ();
+
+    }
+
+  }
+
+  /* UPDATER CHECK */
+
+  ___updaterCheck = () => {
+
+    ipc.on ( 'updater-check', this.__updaterCheck );
+
+  }
+
+  __updaterCheck = async ( notifications: Event | boolean = false ) => {
+
+    updater.removeAllListeners ();
+
+    if ( notifications === true ) {
+
+      updater.on ( 'update-available', () => Notification.show ( 'A new update is available', 'Downloading it right now...' ) );
+      updater.on ( 'update-not-available', () => Notification.show ( 'No update is available', 'You\'re already using the latest version' ) );
+      updater.on ( 'error', err => Notification.show ( 'An error occurred', err.message ) );
+
+    }
+
+    updater.checkForUpdatesAndNotify ();
 
   }
 
@@ -155,6 +235,18 @@ class App {
       this.win = new CWD ();
 
     }
+
+    this.win.init ();
+
+  }
+
+  quit () {
+
+    app['isQuitting'] = true;
+
+    this.___beforeQuit_off ();
+
+    app.quit ();
 
   }
 

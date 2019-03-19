@@ -2,7 +2,7 @@
 /* IMPORT */
 
 import {remote} from 'electron';
-import {Container} from 'overstated';
+import {Container, autosuspend} from 'overstated';
 
 /* WINDOW */
 
@@ -12,8 +12,20 @@ class Window extends Container<WindowState, MainCTX> {
 
   state = {
     focus: false,
-    fullscreen: remote.getCurrentWindow ().isFullScreen ()
+    fullscreen: remote.getCurrentWindow ().isFullScreen (),
+    sidebar: true,
+    zen: false
   };
+
+  /* CONSTRUCTOR */
+
+  constructor () {
+
+    super ();
+
+    autosuspend ( this );
+
+  }
 
   /* API */
 
@@ -38,6 +50,30 @@ class Window extends Container<WindowState, MainCTX> {
   toggleFocus = ( focus: boolean = !this.state.focus ) => {
 
     return this.setState ({ focus });
+
+  }
+
+  isZen = (): boolean => {
+
+    return this.state.zen;
+
+  }
+
+  toggleZen = ( zen: boolean = !this.state.zen ) => {
+
+    return this.setState ({ zen });
+
+  }
+
+  hasSidebar = (): boolean => {
+
+    return this.state.sidebar;
+
+  }
+
+  toggleSidebar = ( sidebar: boolean = !this.state.sidebar ) => {
+
+    return this.setState ({ sidebar });
 
   }
 

@@ -5,6 +5,24 @@ import * as _ from 'lodash';
 import * as matter from 'gray-matter';
 import * as yaml from 'js-yaml';
 
+/* GUTTER */
+
+const Gutter = { // Add/remove an empty line at the start/end //TODO: Maybe find a better name
+
+  add ( str: string ): string {
+
+    return `\n${str}\n`;
+
+  },
+
+  remove ( str: string ): string {
+
+    return str.replace ( /^\n/, '' ).replace ( /\n$/, '' );
+
+  }
+
+};
+
 /* PARSER */
 
 const Parser = {
@@ -12,12 +30,20 @@ const Parser = {
   options: {
     flowLevel: 1,
     indent: 2,
-    lineWidth: 8000
+    lineWidth: 1000000
   },
 
   parse ( str ) {
 
-    return yaml.safeLoad ( str, Parser.options );
+    try {
+
+      return yaml.safeLoad ( str, Parser.options );
+
+    } catch ( e ) {
+
+      return {};
+
+    }
 
   },
 
@@ -41,18 +67,6 @@ const Metadata = {
     }
   },
 
-  _addSurroundingEmptyLines ( str: string ): string {
-
-    return str.replace ( /^\s*/, '\n' ).replace ( /\s*$/, '\n' );
-
-  },
-
-  _removeSurroundingEmptyLines ( str: string ): string {
-
-    return str.replace ( /^\s*/, '' ).replace ( /\s*$/, '' );
-
-  },
-
   get ( content: string ): object {
 
     return matter ( content, Metadata.options ).data;
@@ -61,7 +75,7 @@ const Metadata = {
 
   set ( content: string, metadata: object ): string {
 
-    content = Metadata._addSurroundingEmptyLines ( Metadata.remove ( content ) );
+    content = Gutter.add ( matter ( content, Metadata.options ).content );
 
     if ( !_.isEmpty ( metadata ) ) {
 
@@ -75,7 +89,7 @@ const Metadata = {
 
   remove ( content: string ): string {
 
-    return Metadata._removeSurroundingEmptyLines ( matter ( content, Metadata.options ).content );
+    return Gutter.remove ( matter ( content, Metadata.options ).content );
 
   }
 

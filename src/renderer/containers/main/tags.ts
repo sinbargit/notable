@@ -2,7 +2,7 @@
 /* IMPORT */
 
 import * as _ from 'lodash';
-import {Container} from 'overstated';
+import {Container, autosuspend} from 'overstated';
 import UTags, {TagSpecials, TagSpecialsNames} from '@renderer/utils/tags';
 
 const {SEPARATOR} = UTags;
@@ -19,13 +19,23 @@ class Tags extends Container<TagsState, MainCTX> {
     editing: false
   };
 
+  /* CONSTRUCTOR */
+
+  constructor () {
+
+    super ();
+
+    autosuspend ( this );
+
+  }
+
   /* HELPERS */
 
   _toggleNote = ( tags, note: NoteObj, add: boolean, clone: boolean = false ) => {
 
     function toggle ( parent, key: string, deletable: boolean = false ) {
       const tag: TagObj = parent[key];
-      const index = tag.notes.indexOf ( note );
+      const index = tag.notes.findIndex ( n => n.checksum === note.checksum && n.filePath === note.filePath ); //FIXME: This should actually be `tag.notes.indexOf ( note )` but for some reason some times it doesn't work
       if ( add ) {
         if ( index === -1 ) {
           tag.notes.push ( note );
@@ -131,19 +141,19 @@ class Tags extends Container<TagsState, MainCTX> {
 
   }
 
-  /* LYFECYCLE */
+  /* LIFECYCLE */
 
   refresh = () => {
 
     let tags = {};
 
-    tags[ALL] = { path: ALL, name: TagSpecialsNames.ALL, notes: [], tags: {} };
-    tags[FAVORITES] = { path: FAVORITES, name: TagSpecialsNames.FAVORITES, notes: [], tags: {} };
-    tags[NOTEBOOKS] = { path: NOTEBOOKS, name: TagSpecialsNames.NOTEBOOKS, notes: [], tags: {} };
+    tags[ALL] = { icon: 'note', path: ALL, name: TagSpecialsNames.ALL, notes: [], tags: {} };
+    tags[FAVORITES] = { icon: 'star', path: FAVORITES, name: TagSpecialsNames.FAVORITES, notes: [], tags: {} };
+    tags[NOTEBOOKS] = { icon: 'notebook', iconCollapsed: 'notebook_multiple', path: NOTEBOOKS, name: TagSpecialsNames.NOTEBOOKS, notes: [], tags: {} };
     tags[TAGS] = { path: TAGS, name: TagSpecialsNames.TAGS, notes: [], tags: {} };
-    tags[TEMPLATES] = { path: TEMPLATES, name: TagSpecialsNames.TEMPLATES, notes: [], tags: {} };
-    tags[UNTAGGED] = { path: UNTAGGED, name: TagSpecialsNames.UNTAGGED, notes: [], tags: {} };
-    tags[TRASH] = { path: TRASH, name: TagSpecialsNames.TRASH, notes: [], tags: {} };
+    tags[TEMPLATES] = { icon: 'tag_outline', iconCollapsed: 'tag_outline_multiple', path: TEMPLATES, name: TagSpecialsNames.TEMPLATES, notes: [], tags: {} };
+    tags[UNTAGGED] = { icon: 'tag_crossed', path: UNTAGGED, name: TagSpecialsNames.UNTAGGED, notes: [], tags: {} };
+    tags[TRASH] = { icon: 'delete', path: TRASH, name: TagSpecialsNames.TRASH, notes: [], tags: {} };
 
     Object.values ( this.ctx.notes.get () ).forEach ( note => this._toggleNote ( tags, note, true ) );
 
@@ -183,21 +193,21 @@ class Tags extends Container<TagsState, MainCTX> {
 
     const tags = this.get ();
 
-    if ( updates.add ) {
-
-      updates.add.forEach ( note => {
-
-        this._toggleNote ( tags, note, true, true );
-
-      });
-
-    }
-
     if ( updates.remove ) {
 
       updates.remove.forEach ( note => {
 
         this._toggleNote ( tags, note, false, true );
+
+      });
+
+    }
+
+    if ( updates.add ) {
+
+      updates.add.forEach ( note => {
+
+        this._toggleNote ( tags, note, true, true );
 
       });
 

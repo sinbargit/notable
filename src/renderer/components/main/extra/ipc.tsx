@@ -13,7 +13,8 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
 
   /* VARIABLES */
 
-  main; cwd;
+  main = {} as IMain;
+  cwd = {} as ICWD;
 
   /* CONSTRUCTOR */
 
@@ -21,8 +22,8 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
 
     super ( props );
 
-    this.main = props.containers[0] as IMain;
-    this.cwd = props.containers[1] as ICWD;
+    this.main = props.containers[0];
+    this.cwd = props.containers[1];
 
   }
 
@@ -33,8 +34,16 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
     ipc.on ( 'cwd-change', this.__cwdChange );
     ipc.on ( 'cwd-open-in-app', this.__cwdOpenInApp );
     ipc.on ( 'import', this.__import );
+    ipc.on ( 'export-html', this.__exportHTML );
+    ipc.on ( 'export-markdown', this.__exportMarkdown );
+    ipc.on ( 'export-pdf', this.__exportPDF );
+    ipc.on ( 'app-quit', this.__appQuit );
+    ipc.on ( 'window-close', this.__windowClose );
     ipc.on ( 'window-focus-toggle', this.__windowFocusToggle );
     ipc.on ( 'window-fullscreen-set', this.__windowFullscreenSet );
+    ipc.on ( 'window-sidebar-toggle', this.__windowSidebarToggle );
+    ipc.on ( 'window-zen-toggle', this.__windowZenToggle );
+    ipc.on ( 'editor-split-toggle', this.__editorSplitToggle );
     ipc.on ( 'multi-editor-select-all', this.__multiEditorSelectAll );
     ipc.on ( 'multi-editor-select-invert', this.__multiEditorSelectInvert );
     ipc.on ( 'multi-editor-select-clear', this.__multiEditorSelectClear );
@@ -45,11 +54,13 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
     ipc.on ( 'note-move-to-trash', this.__noteMoveToTrash );
     ipc.on ( 'note-new', this.__noteNew );
     ipc.on ( 'note-duplicate', this.__noteDuplicate );
+    ipc.on ( 'note-duplicate-template', this.__noteDuplicateTemplate );
     ipc.on ( 'note-open-in-app', this.__noteOpenInApp );
     ipc.on ( 'note-permanently-delete', this.__notePermanentlyDelete );
     ipc.on ( 'note-pin-toggle', this.__notePinToggle );
     ipc.on ( 'note-restore', this.__noteRestore );
     ipc.on ( 'note-reveal', this.__noteReveal );
+    ipc.on ( 'quick-panel-toggle', this.__quickPanelToggle );
     ipc.on ( 'search-focus', this.__searchFocus );
     ipc.on ( 'search-next', this.__searchNext );
     ipc.on ( 'search-previous', this.__searchPrevious );
@@ -65,8 +76,16 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
     ipc.removeListener ( 'cwd-change', this.__cwdChange );
     ipc.removeListener ( 'cwd-open-in-app', this.__cwdOpenInApp );
     ipc.removeListener ( 'import', this.__import );
+    ipc.removeListener ( 'export-html', this.__exportHTML );
+    ipc.removeListener ( 'export-markdown', this.__exportMarkdown );
+    ipc.removeListener ( 'export-pdf', this.__exportPDF );
+    ipc.removeListener ( 'app-quit', this.__appQuit );
+    ipc.removeListener ( 'window-close', this.__windowClose );
     ipc.removeListener ( 'window-focus-toggle', this.__windowFocusToggle );
     ipc.removeListener ( 'window-fullscreen-set', this.__windowFullscreenSet );
+    ipc.removeListener ( 'window-sidebar-toggle', this.__windowSidebarToggle );
+    ipc.removeListener ( 'window-zen-toggle', this.__windowZenToggle );
+    ipc.removeListener ( 'editor-split-toggle', this.__editorSplitToggle );
     ipc.removeListener ( 'multi-editor-select-all', this.__multiEditorSelectAll );
     ipc.removeListener ( 'multi-editor-select-invert', this.__multiEditorSelectInvert );
     ipc.removeListener ( 'multi-editor-select-clear', this.__multiEditorSelectClear );
@@ -77,11 +96,13 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
     ipc.removeListener ( 'note-move-to-trash', this.__noteMoveToTrash );
     ipc.removeListener ( 'note-new', this.__noteNew );
     ipc.removeListener ( 'note-duplicate', this.__noteDuplicate );
+    ipc.removeListener ( 'note-duplicate-template', this.__noteDuplicateTemplate );
     ipc.removeListener ( 'note-open-in-app', this.__noteOpenInApp );
     ipc.removeListener ( 'note-permanently-delete', this.__notePermanentlyDelete );
     ipc.removeListener ( 'note-pin-toggle', this.__notePinToggle );
     ipc.removeListener ( 'note-restore', this.__noteRestore );
     ipc.removeListener ( 'note-reveal', this.__noteReveal );
+    ipc.removeListener ( 'quick-panel-toggle', this.__quickPanelToggle );
     ipc.removeListener ( 'search-focus', this.__searchFocus );
     ipc.removeListener ( 'search-next', this.__searchNext );
     ipc.removeListener ( 'search-previous', this.__searchPrevious );
@@ -112,6 +133,42 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
 
   }
 
+  __exportHTML = () => {
+
+    this.main.export.exportHTML ();
+
+  }
+
+  __exportMarkdown = () => {
+
+    this.main.export.exportMarkdown ();
+
+  }
+
+  __exportPDF = () => {
+
+    this.main.export.exportPDF ();
+
+  }
+
+  __appQuit = async () => {
+
+    await this.main.note.autosave ();
+    await this.main.waitIdle ();
+
+    ipc.send ( 'force-quit' );
+
+  }
+
+  __windowClose = async () => {
+
+    await this.main.note.autosave ();
+    await this.main.waitIdle ();
+
+    ipc.send ( 'force-close' );
+
+  }
+
   __windowFocusToggle = () => {
 
     this.main.window.toggleFocus ();
@@ -121,6 +178,24 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
   __windowFullscreenSet = ( event, isFullscreen? ) => {
 
     this.main.window.toggleFullscreen ( isFullscreen );
+
+  }
+
+  __windowSidebarToggle = () => {
+
+    this.main.window.toggleSidebar ();
+
+  }
+
+  __windowZenToggle = () => {
+
+    this.main.window.toggleZen ();
+
+  }
+
+  __editorSplitToggle = () => {
+
+    this.main.editor.toggleSplit ();
 
   }
 
@@ -184,6 +259,12 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
 
   }
 
+  __noteDuplicateTemplate = () => {
+
+    this.main.note.duplicate ( undefined, true );
+
+  }
+
   __noteOpenInApp = () => {
 
     this.main.note.openInApp ();
@@ -211,6 +292,12 @@ class IPC extends Component<{ containers: [IMain, ICWD]}, undefined> {
   __noteReveal = () => {
 
     this.main.note.reveal ();
+
+  }
+
+  __quickPanelToggle = ( event, force?: boolean ) => {
+
+    this.main.quickPanel.toggleOpen ( force );
 
   }
 
